@@ -1,0 +1,50 @@
+# Data Filtering and sorting
+import pandas as pd
+from functools import reduce
+import os
+
+# 1. Define your file list (Make sure names match exactly what you uploaded)
+my_stocks = ['M_IN.csv', 'D_EN.csv', 'E_EN.csv', 'H_EN.csv', 'Ab_EN.csv'] 
+
+def colab_data_engine(file_list):
+    processed_dfs = []
+    
+    for file in file_list:
+        if not os.path.exists(file):
+            print(f"❌ File not found: {file}")
+            continue
+            
+        df = pd.read_csv(file)
+        stock_name = file.replace('.csv', '')
+        
+        # Standardize headers (Handling the different formats in your files)
+        df.columns = [c.strip().upper().replace('"', '') for c in df.columns]
+        df = df.rename(columns={'PRICE': 'CLOSE', 'LTP': 'CLOSE'})
+        
+        # Standardize Dates
+        df['DATE'] = pd.to_datetime(df['DATE'], dayfirst=True, errors='coerce')
+        
+        # Clean Numeric Commas (e.g., "1,200" -> 1200)
+        if df['CLOSE'].dtype == 'object':
+            df['CLOSE'] = df['CLOSE'].str.replace(',', '').astype(float)
+            
+        df = df[['DATE', 'CLOSE']].dropna().rename(columns={'CLOSE': stock_name})
+        processed_dfs.append(df)
+        print(f"✅ Loaded {stock_name}")
+
+    # Merge all dataframes on 'DATE'
+    master_df = reduce(lambda left, right: pd.merge(left, right, on='DATE', how='outer'), processed_dfs)
+    
+    # Sort and Forward Fill (Handle holidays)
+    master_df = master_df.sort_values('DATE').fillna(method='ffill')
+    
+    # Filter: Only keep rows where EVERY stock has data (Synchronized start)
+    master_df = master_df.dropna()
+    
+    return master_df
+
+# Run the engine
+portfolio_data = colab_data_engine(my_stocks)
+portfolio_data.to_csv('Master_Portfolio.csv', index=False)
+print("\n--- Portfolio Sync Complete ---")
+print(portfolio_data.head())
